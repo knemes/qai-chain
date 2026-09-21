@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qai-chain"
+version = "0.2.0"
+description = "Einstein Spectre Monotile Quantum Swarm Ledger with ML-KEM-1024 and ML-DSA-65"
+readme = "README.md"
+authors = [{ name = "QAI-Chain Team" }]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=44.0.0",
+    "cffi>=1.17.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pqc_crypto*", "geometry*", "quantum_blockchain*"]

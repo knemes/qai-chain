@@ -27,6 +27,29 @@ class Transaction:
             'timestamp': self.timestamp
         }
 
+    def to_serializable_dict(self) -> Dict[str, Any]:
+        """Returns a dictionary representation suitable for JSON serialization, including signature."""
+        d = self.to_ordered_dict()
+        d['signature'] = binascii.hexlify(self.signature).decode('ascii') if self.signature else None
+        return d
+
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Transaction':
+        """Creates a Transaction object from a dictionary."""
+        sender_public_key = binascii.unhexlify(data['sender_public_key'])
+        recipient_public_key_hex = data.get('recipient_public_key')
+        recipient_public_key = binascii.unhexlify(recipient_public_key_hex) if recipient_public_key_hex else None
+        
+        transaction = cls(
+            sender_public_key=sender_public_key,
+            recipient_public_key=recipient_public_key,
+            data=data['data'],
+            timestamp=data['timestamp']
+        )
+        transaction.signature = binascii.unhexlify(data['signature']) if data.get('signature') else None
+        return transaction
+
     def calculate_hash_for_signing(self) -> bytes:
         """Calculates the hash of the transaction content that will be signed."""
         transaction_string = json.dumps(self.to_ordered_dict(), sort_keys=True).encode('utf-8')

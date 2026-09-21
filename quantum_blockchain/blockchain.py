@@ -5,6 +5,7 @@ import random
 from transaction import Transaction
 from block import Block
 import hashlib
+import json # For saving/loading state
 from ainode import AINode 
 from pqs_utils import DEFAULT_SIG_ALG, pqc_sign_message, pqc_verify_signature, generate_pqc_keys
 
@@ -24,9 +25,9 @@ REPUTATION_PENALTY_HASH_MISMATCH = -0.5
 REPUTATION_PENALTY_FAILED_ADD_BLOCK_GENERIC = -0.2
 REPUTATION_DECAY_FOR_INACTIVITY_PERIOD = -0.1 
 
-ADJUDICATION_MIN_VOTES_TO_RESOLVE = 3 # Example: minimum number of votes to resolve a case
-ADJUDICATION_SUPERMAJORITY_THRESHOLD = 0.66 # Example: 2/3 needed to confirm misbehavior
-ADJUDICATION_CASE_LIFESPAN_BLOCKS = 100 # Example: how many blocks a case stays open for voting
+ADJUDICATION_MIN_VOTES_TO_RESOLVE = 3 
+ADJUDICATION_SUPERMAJORITY_THRESHOLD = 0.90
+ADJUDICATION_CASE_LIFESPAN_BLOCKS = 100 
 
 class Blockchain:
     def __init__(self, sig_alg: str = DEFAULT_SIG_ALG):
@@ -35,7 +36,6 @@ class Blockchain:
         self.sig_alg = sig_alg
         # Validator Registry: {hex_public_key: {"private_key": bytes, "reputation": float, "public_key_bytes": bytes, "is_active": bool, "effective_max_reputation": float}}
         self.validators: Dict[str, Dict[str, Any]] = {}
-        # MIN_REPUTATION_TO_PROPOSE is now a class-level constant
 
         # Adjudication Cases: {case_id: {"accused_pk_hex": str, "accuser_pk_hex": str, "evidence_cid": str, "rule_violated": str, "votes": {voter_pk_hex: bool}, "creation_block_index": int, "status": "open/closed"}}
         self.adjudication_cases: Dict[str, Dict[str, Any]] = {}
@@ -176,6 +176,33 @@ class Blockchain:
             print(f"Invalid transaction discarded: {transaction}")
             return False
 
+    def _get_deterministic_validator_state_string(self) -> str:
+        """Creates a deterministic string representation of the validator state for hashing."""
+        # Sort validators by hex public key for consistent ordering
+        sorted_validator_keys = sorted(self.validators.keys())
+        serializable_validators = {}
+        for pk_hex in sorted_validator_keys:
+            data = self.validators[pk_hex]
+            serializable_validators[pk_hex] = {
+                # Exclude private_key for state hashing
+                "reputation": data["reputation"],
+                "is_active": data["is_active"],
+                "effective_max_reputation": data["effective_max_reputation"]
+            }
+        return json.dumps(serializable_validators, sort_keys=True)
+
+    def _get_deterministic_adjudication_cases_string(self) -> str:
+        """Creates a deterministic string representation of adjudication cases for hashing."""
+        # Sort cases by case_id for consistent ordering
+        return json.dumps(self.adjudication_cases, sort_keys=True)
+
+    def calculate_application_state_root(self) -> str:
+        """Calculates a root hash representing the current application state."""
+        val_state_str = self._get_deterministic_validator_state_string()
+        adj_cases_str = self._get_deterministic_adjudication_cases_string()
+        combined_state_str = f"{val_state_str}{adj_cases_str}{self.sig_alg}" # Include sig_alg for completeness
+        return hashlib.sha256(combined_state_str.encode('utf-8')).hexdigest()
+
     def _create_block_candidate(self, proposer_public_key: bytes, proposer_private_key: bytes) -> Optional[Block]:
         """Creates a new block with pending transactions (simplified 'mining')."""
         if not self.pending_transactions:
@@ -183,11 +210,13 @@ class Blockchain:
             return None
 
         last_block = self.get_last_block()
+        current_app_state_root = self.calculate_application_state_root() # Calculate state root *before* creating the block
         new_block = Block(index=last_block.index + 1,
-                          transactions=list(self.pending_transactions), # Take a copy
+                          transactions=list(self.pending_transactions),
                           timestamp=time(),
                           previous_hash=last_block.hash,
-                          proposer_public_key=proposer_public_key)
+                          proposer_public_key=proposer_public_key,
+                          application_state_root=current_app_state_root)
         
         new_block.sign_block(proposer_private_key, self.sig_alg)
         
@@ -356,11 +385,89 @@ class Blockchain:
             # else: add_block returned False, and it should have handled penalizing the proposer if it was their fault.
         return None
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts the blockchain state to a serializable dictionary."""
+        validators_serializable = {}
+        for pk_hex, data in self.validators.items():
+            validators_serializable[pk_hex] = {
+                # DO NOT serialize private_key in a real system this way!
+                # For simulation, we include it. In production, nodes manage their own keys.
+                "private_key_hex": binascii.hexlify(data["private_key"]).decode('ascii'),
+                "public_key_bytes_hex": binascii.hexlify(data["public_key_bytes"]).decode('ascii'),
+                "reputation": data["reputation"],
+                "is_active": data["is_active"],
+                "effective_max_reputation": data["effective_max_reputation"]
+            }
+        
+        return {
+            "chain": [block.to_dict() for block in self.chain],
+            "pending_transactions": [tx.to_serializable_dict() for tx in self.pending_transactions],
+            "sig_alg": self.sig_alg,
+            "validators": validators_serializable,
+            "adjudication_cases": self.adjudication_cases, # Assumes this dict is JSON serializable
+            "genesis_proposer_public_key_hex": binascii.hexlify(self.genesis_proposer_public_key).decode('ascii'),
+            # Again, genesis_proposer_private_key for simulation only.
+            "genesis_proposer_private_key_hex": binascii.hexlify(self.genesis_proposer_private_key).decode('ascii'),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], sig_alg_override: Optional[str] = None) -> 'Blockchain':
+        """Creates a Blockchain instance from a dictionary."""
+        sig_alg = sig_alg_override if sig_alg_override else data['sig_alg']
+        blockchain = cls(sig_alg=sig_alg) # Initialize with the correct sig_alg
+        
+        # Clear default genesis created by __init__ as we are loading state
+        blockchain.chain = []
+        blockchain.validators = {}
+
+        blockchain.chain = [Block.from_dict(block_data) for block_data in data['chain']]
+        blockchain.pending_transactions = [Transaction.from_dict(tx_data) for tx_data in data['pending_transactions']]
+        
+        for pk_hex, val_data in data['validators'].items():
+            blockchain.validators[pk_hex] = {
+                "private_key": binascii.unhexlify(val_data["private_key_hex"]),
+                "public_key_bytes": binascii.unhexlify(val_data["public_key_bytes_hex"]),
+                "reputation": val_data["reputation"],
+                "is_active": val_data["is_active"],
+                "effective_max_reputation": val_data["effective_max_reputation"]
+            }
+        blockchain.adjudication_cases = data.get('adjudication_cases', {}) # Load if exists
+        blockchain.genesis_proposer_public_key = binascii.unhexlify(data['genesis_proposer_public_key_hex'])
+        blockchain.genesis_proposer_private_key = binascii.unhexlify(data['genesis_proposer_private_key_hex'])
+        return blockchain
+
+    def save_state(self, filepath: str = "qai_chain_state.json") -> None:
+        """Saves the current blockchain state to a JSON file."""
+        with open(filepath, 'w') as f:
+            json.dump(self.to_dict(), f, indent=4)
+        print(f"Blockchain state saved to {filepath}")
+
+    @classmethod
+    def load_state(cls, filepath: str = "qai_chain_state.json") -> Optional['Blockchain']:
+        """Loads blockchain state from a JSON file."""
+        try:
+            with open(filepath, 'r') as f:
+                state_data = json.load(f)
+            print(f"Blockchain state loaded from {filepath}")
+            return cls.from_dict(state_data)
+        except FileNotFoundError:
+            print(f"Error: State file {filepath} not found.")
+            return None
+        except Exception as e:
+            print(f"Error loading state from {filepath}: {e}")
+            return None
+
 if __name__ == '__main__':
     print(f"Using PQC Signature Algorithm: {DEFAULT_SIG_ALG}")
 
     # Create a blockchain instance
-    qai_blockchain = Blockchain(sig_alg=DEFAULT_SIG_ALG)
+    # qai_blockchain = Blockchain(sig_alg=DEFAULT_SIG_ALG)
+    # Try to load existing state, or create new if not found/failed
+    qai_blockchain = Blockchain.load_state()
+    if qai_blockchain is None:
+        print("Creating a new blockchain instance.")
+        qai_blockchain = Blockchain(sig_alg=DEFAULT_SIG_ALG)
+
     print(f"Genesis block created: {qai_blockchain.get_last_block()}")
     print("Initial Validator reputations:")
     for pk_hex, data in qai_blockchain.validators.items():
@@ -467,5 +574,8 @@ if __name__ == '__main__':
             print("Correctly identified and rejected invalid transaction.")
     except Exception as e:
         print(f"Error during invalid transaction test: {e}")
+
+    # Save the state at the end of the simulation
+    qai_blockchain.save_state()
 
     qai_blockchain.is_chain_valid()

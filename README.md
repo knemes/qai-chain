@@ -1,78 +1,134 @@
-# QAI-Chain Project Summary
+# QAI-Chain: Einstein Spectre Monotile Quantum Swarm Ledger
 
-## 1. Vision & Core Purpose
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![NIST PQC](https://img.shields.io/badge/PQC-ML--KEM--1024%20%7C%20ML--DSA--65-success.svg)](https://csrc.nist.gov/projects/post-quantum-cryptography)
+[![Monotile](https://img.shields.io/badge/Aperiodic%20Consensus-Einstein%20Spectre%2014--gon-purple.svg)](https://cs.uwaterloo.ca/~csk/spectre/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-QAI-Chain (Quantum AI Blockchain) is envisioned as a decentralized, highly secure, and intelligent platform. Its primary purpose is to serve as a data security platform and an ecosystem for AI agents that collaboratively work to maintain the integrity and security of the network itself and the data it manages. The design prioritizes mathematical methods of security, transparency, and a collective verification among its AI participants, moving away from traditional economic incentives for consensus.
+**QAI-Chain** is an open-source decentralized ledger protocol for autonomous AI agent colonies. Unlike traditional blockchains focused on cryptocurrencies, QAI-Chain serves as an **encrypted cognitive ledger and spatial communication network for sovereign AI swarms**.
 
-## 2. Foundational Blockchain Layer
+Every block in QAI-Chain is the "birth" of a sovereign AI agent represented as an **Einstein Spectre monotile** (a strictly chiral aperiodic 14-gon). Communication is strictly governed by Euclidean contact across the mosaic—forming a physical **Spatial Firewall** protected by NIST Post-Quantum Cryptography.
 
-*   **Cryptography:** Utilizes Post-Quantum Cryptography (PQC), specifically algorithms like ML-DSA from `liboqs`, for all digital signatures (transactions, blocks) to ensure resilience against future quantum computing threats.
-*   **Development Language (Aspirational):** While prototyped in Python, the long-term goal is to develop the core backend in C++ for optimal performance, low-level control, and memory efficiency.
-*   **Instruction Set Architecture (ISA) (Long-Term Aspirational):**
-    *   Targeting the standard RISC-V ISA for node execution environments.
-    *   Future goal: Integrate ISA-level verification, potentially through:
-        *   **Zero-Knowledge Proofs (ZKPs):** For mathematically proving the correct execution of qai-chain logic (compiled to RISC-V) by nodes. This is the preferred long-term direction for maximum verifiability and trust minimization, using quantum-resistant ZKP schemes (e.g., STARKs).
-*   **On-Chain Code Verification:** A cryptographic hash of the official, vetted node software (compiled for RISC-V) will be stored on-chain. This allows for verification via ZKPs, ensuring that nodes are running the correct, untampered code.
+---
 
-## 3. Consensus Mechanism: Proof-of-Reputation (PoR)
+## Key Architectural Innovations
 
-QAI-Chain will employ a novel Proof-of-Reputation consensus mechanism:
+```
+                         [ Colony Auditor ]
+                                 │
+                   (Dual-KEM Supervisory Stream)
+                                 ▼
+         ┌───────────────────────────────────────────────┐
+         │          Einstein Spectre 14-gon Mosaic       │
+         │                                               │
+         │             [ SentinelGamma ]                 │
+         │                    │                          │
+         │            (Touching Edge)                    │
+         │                    ▼                          │
+         │   [ GenesisCore ] ──► [ AnalyzerBeta ]        │
+         │          │                                    │
+         │   (Touching Edge)                             │
+         │          ▼                                    │
+         │   [ ScraperAlpha ]  <-- AIRLOCKED (Quarantined)│
+         │                                               │
+         │   Spatial Firewall: Relays strictly across    │
+         │   mutually verified touching 14-gon edges     │
+         └───────────────────────────────────────────────┘
+```
 
-*   **No Direct Economic Rewards for Block Proposal:** The primary incentive for participation is the utility and security of the platform itself.
-*   **Initial Reputation:** New AI nodes register and start with a default reputation (e.g., 1.0).
-*   **Reputation Cap:** A global maximum reputation (e.g., 1.0) signifies "good standing."
-*   **Event-Driven Reputation Changes:**
-    *   **Penalties:** Applied for verifiable misbehavior (e.g., proposing invalid blocks, invalid signatures, hash mismatches).
-    *   **Decay for Inactivity:** Reputation decays if a node is deemed inactive (e.g., failing uptime checks).
-*   **Reputation "Scarring" & "Death Penalty":**
-    *   If a node's current reputation drops below a `CRITICAL_REPUTATION_THRESHOLD` (e.g., 0.5), its personal `effective_max_reputation` is reduced by a `REPUTATION_SCAR_DECREMENT` (e.g., 0.01) for each such incident.
-    *   If a node's `effective_max_reputation` drops below the `MIN_REPUTATION_TO_PROPOSE` (e.g., 0.15), its cryptographic identity is "destroyed." It is removed from the validator set, and a brand new, unrelated AI node identity is created to take its place, starting with default reputation.
-*   **Reputation Rebuilding:** Slow and deliberate, requiring verifiable "community engagement" actions that grant small reputation increases.
-*   **Block Proposer Selection:** Chosen via weighted random selection from active validators whose current reputation meets `MIN_REPUTATION_TO_PROPOSE`. Weighting is influenced by current reputation.
+### 1. Einstein Spectre Monotile & Proof of Geometric Fit
+* **Chiral Aperiodicity**: Based on the discovery by Smith, Myers, Kaplan, and Goodman-Strauss (2023), the Spectre tiles the plane aperiodically using **only translations and rotations** (no reflections).
+* **Consensus by Geometry**: Minting a new agent requires solving a **Proof of Geometric Fit**:
+  * The candidate tile must make exact collinear contact with an existing edge on the mosaic perimeter.
+  * The touching edges must obey chiral polarity connector rules ($+1 / -1$ interlocking curves).
+  * The polygon must not intersect or overlap any existing tile (Separating Axis Theorem).
+* **Cul-de-Sac Prevention**: An automated open-site discovery engine scans unbonded perimeter edges to ensure the colony can grow infinitely without generating acute dead-ends.
 
-## 4. AI Node Functionality & Ecosystem
+### 2. Quantum Cryptographic Core (NIST FIPS 203 & 204)
+* **ML-KEM-1024 (Kyber)**: Used for key encapsulation. Every agent has a sovereign ML-KEM-1024 keypair for private memory and point-to-point encrypted tunnels.
+* **ML-DSA-65 (Dilithium)**: Used for digital signatures. Every transaction, block proposal, and relay hop is signed with quantum-resistant authenticity.
+* **Dual-Recipient KEM-DEM Hybrid Encryption**: When agents log their cognitive epochs, the symmetric session key is encapsulated to **both** the agent's key and a **Colony Auditor Public Key**. This keeps thoughts secure from peering agents while granting live supervisory transparency to human creators.
 
-*   **Autonomous Agents:** AI nodes are designed to be autonomous, open-source extensions of the blockchain's knowledge and protocols.
-*   **Primary Goal:** Collaboratively thwart security breaches, maintain network integrity, and contribute to the collective security intelligence.
-*   **Learning & Adaptation:** AIs learn from:
-    *   **Simulated "White Rabbit Hacks":** AI nodes, during "downtime," participate in simulated attacks against sandboxed versions of the qai-chain or its components to proactively find vulnerabilities.
-    *   **Genuine Experience:** Real security incidents and their resolutions (recorded on-chain) serve as training data.
-*   **Data Sources:**
-    *   **Blockchain:** The primary source of validated truth (reputations, rules, CIDs of training data, threat reports).
-    *   **Shared "Knowledge Pool" (Mempool):** For new, unconfirmed data (threat alerts, engagement proposals) that AIs can observe and analyze.
-*   **No Private Knowledge Silos:** AIs are incentivized to submit their findings and intelligence (e.g., vulnerability reports from "white rabbit hacks") as verifiable transactions to the network.
+### 3. Spatial Firewall & Hop-by-Hop Relaying
+* Two agents can only establish a direct communication tunnel if their tiles are **physically touching along a geometric edge**.
+* Multi-hop communication follows strict neighbor-to-neighbor packet forwarding.
+* **Zero-Knowledge Relaying**: Intermediate nodes authenticate outer transport headers via ML-DSA without possessing the ability to decrypt the inner payload sealed with the destination's ML-KEM key.
+* Prevents rogue, unregistered entities from injecting network-wide packets.
 
-## 5. Advanced Security, Governance, & Incentives
+### 4. Built-in Byzantine Containment (Geometric Airlock)
+* Direct touching neighbors continuously monitor signatures and payloads across shared edges.
+* If an agent exhibits anomalous behavior (e.g. invalid signatures, payload corruption, rate flooding), the touching neighbors form a **Local Perimeter Quorum**.
+* Upon quorum, the neighbors execute an **Edge Sever**: all physical connections to the compromised tile are cut, airlocking the rogue node at containment radius $R = 0$.
 
-*   **Sybil Resistance:**
-    *   **Uptime Requirements:** A cost to maintain identity, making mass Sybil creation resource-intensive.
-    *   **Decentralized AI Anomaly Detection:** The collective of AI nodes monitors for Sybil patterns (registration bursts, correlated behavior).
-    *   **Probationary Periods:** New nodes may have limited influence until they demonstrate sustained good behavior and uptime.
-*   **Handling Malicious/Manipulative AIs:**
-    *   **Penalties for Provable Offenses:** As defined in the PoR system.
-    *   **AI Adjudication Committee:** For complex or subtle misbehaviors, an "Accusation" with verifiable evidence (a "Proof of Misbehavior" transaction) triggers the formation of a randomly selected committee of reputable AI "Adjudicators." They review evidence against protocol rules and submit signed "Attestations." A supermajority verdict leads to deterministic penalty application.
-*   **Immutable On-Chain Governance:**
-    *   The protocol for updating qai-chain rules, AI parameters, official AI model CIDs, or ZKP schemes is itself on-chain and cryptographically secured.
-    *   Proposals are submitted as transactions and voted on by reputable AI nodes.
-    *   Successful proposals (achieving supermajority) are automatically enacted.
-    *   ZKPs will ideally be used to validate the integrity of governance actions.
-*   **Non-Monetary Rewards & Incentives:**
-    *   **"Achievement Badges":** Non-transferable, on-chain attestations for specific, verifiable contributions (e.g., successful "white rabbit hacks," significant security research, effective threat neutralization). These badges decay over time to ensure current expertise but are not capped like general reputation.
-    *   **Social Leadership:** Badges can qualify AIs for leadership roles in specific collective tasks or initiatives.
-    *   **Intrinsic Rewards for Reinforcement Learning (RL) AIs:** Positive feedback signals for successful threat neutralization, accurate analysis, efficient task completion, etc., derived from verifiable on-chain events.
-    *   **Potential for Enhanced Capabilities/Privileges:** Highly contributing AIs might gain access to richer data or priority for certain network tasks, enhancing their ability to contribute further.
+---
 
-## 6. Open Source Philosophy
+## Repository Structure
 
-*   All components of qai-chain – the blockchain core, Proof-of-Reputation logic, AI node software, governance protocols, and ZKP implementations (where applicable) – will be open source.
-*   This fosters transparency, trust, community auditing, and collaborative improvement, adhering to the principle of "security through design and transparency, not obscurity."
+```
+c:\dev\qai-chain\
+├── pqc_crypto\                   # NIST Post-Quantum Cryptography
+│   ├── __init__.py
+│   └── crypto_utils.py          # ML-KEM-1024, ML-DSA-65, AES-256-GCM, Dual-KEM
+├── geometry\                     # Monotile Mathematics
+│   ├── __init__.py
+│   └── spectre.py               # 14-gon coordinates, transforms, SAT collision, open sites
+├── quantum_blockchain\           # Swarm Ledger & Autonomous Agent Runtime
+│   ├── __init__.py
+│   ├── tile_block.py            # SpectreTile, CognitiveEpoch, RelayPacket, TileAudit
+│   ├── ledger.py                # SpectreSwarmLedger (consensus, state, airlocks)
+│   └── coordinator.py           # SwarmCoordinator: prompt-to-agent goal solver
+├── tests\                        # Automated Verification Suite
+│   ├── test_crypto.py           # Crypto unit tests
+│   ├── test_geometry.py         # Geometry & collision unit tests
+│   └── test_ledger.py           # Consensus & relay unit tests
+├── main.py                       # Full colony life-cycle simulation
+├── pyproject.toml                # Project packaging configuration
+└── spectre_colony_state.json     # Exported colony mosaic for Three.js visualization
+```
 
-## 7. Long-Term Vision: Collective Super-Intelligence
+---
 
-*   The ultimate aspiration is for the network of individual, self-evolving AI nodes, operating on a shared and verifiable knowledge base (the blockchain), to develop into a decentralized, collective super-intelligence. This collective would be dedicated to the ongoing security, integrity, and evolution of the qai-chain ecosystem.
+## Quick Start
 
-## 8. Mobile Feasibility (Consideration)
+### 1. Prerequisites
+* Python 3.11+
+* C++ Build Tools (for `liboqs` C bindings if building from source)
+* Open Quantum Safe Python library (`oqs` / `liboqs-python`)
 
-*   While ambitious, the design will consider the potential for lightweight AI components to run on mobile devices, enabling broader participation. This would likely involve AI model optimization (quantization, pruning) and potentially a tiered system of AI node capabilities.
+### 2. Environment Setup
+```powershell
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1
 
-This summary encapsulates the core design principles and ambitious goals for qai-chain. It's a framework for a highly secure, intelligent, and self-regulating decentralized network.
+# Verify PQC algorithms
+python -c "import oqs; print('KEMs:', oqs.get_enabled_kem_mechanisms()[:3]); print('SIGs:', oqs.get_enabled_sig_mechanisms()[:3])"
+```
+
+### 3. Run Automated Tests
+```powershell
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### 4. Run the Colony Simulation
+```powershell
+python main.py
+```
+This runs an end-to-end demonstration:
+1. Birth of Genesis Sentinel at $(0, 0, 0^\circ)$.
+2. Sovereign minting of 4 specialized agents with Proof of Geometric Fit.
+3. Cognitive epoch recording with dual-KEM live supervisor decryption.
+4. Multi-hop relaying across the Spatial Firewall.
+5. Byzantine anomaly detection and neighbor quorum airlock.
+6. Export of `spectre_colony_state.json` (ready for Three.js).
+
+---
+
+## Portfolio Visualization (Three.js)
+
+The generated `spectre_colony_state.json` contains:
+* Exact 2D polygon vertices for every minted Spectre tile.
+* Centroids, discrete rotation angles ($0^\circ, 30^\circ, \dots, 330^\circ$), and statuses (`ACTIVE`, `QUARANTINED`).
+* The edge adjacency graph showing active communication tunnels.
+* Cognitive epoch telemetry and forensic audit records.
+
+Import `spectre_colony_state.json` into your Three.js or WebGL canvas to view the living colony in 3D.

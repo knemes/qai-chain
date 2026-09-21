@@ -1,5 +1,4 @@
 import oqs
-print(oqs.Signature)
 from typing import Tuple
 
 # --- PQC Configuration ---

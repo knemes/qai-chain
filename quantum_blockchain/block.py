@@ -7,13 +7,14 @@ from transaction import Transaction
 from pqs_utils import DEFAULT_SIG_ALG, pqc_sign_message, pqc_verify_signature, generate_pqc_keys
 
 class Block:
-    def __init__(self, index: int, transactions: List[Transaction], timestamp: float, previous_hash: str, proposer_public_key: bytes, nonce: int = 0):
+    def __init__(self, index: int, transactions: List[Transaction], timestamp: float, previous_hash: str, proposer_public_key: bytes, application_state_root: str, nonce: int = 0):
         self.index = index
         self.transactions = transactions
         self.timestamp = timestamp
         self.previous_hash = previous_hash
         self.proposer_public_key = proposer_public_key
         self.nonce = nonce # For PoW, can be adapted for PoS later
+        self.application_state_root = application_state_root # New field
         
         self.block_signature: Optional[bytes] = None # Signature of the block hash by the proposer
         self.hash = self.calculate_block_hash() # Hash of the block header + transactions
@@ -31,8 +32,33 @@ class Block:
             'previous_hash': self.previous_hash,
             'proposer_public_key': binascii.hexlify(self.proposer_public_key).decode('ascii'),
             'nonce': self.nonce,
-            'transactions_merkle_root': self._calculate_transactions_merkle_root()
+            'transactions_merkle_root': self._calculate_transactions_merkle_root(),
+            'application_state_root': self.application_state_root # Include in header
         }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Returns a dictionary representation of the block for serialization."""
+        return {
+            'index': self.index,
+            'transactions': [tx.to_serializable_dict() for tx in self.transactions],
+            'timestamp': self.timestamp,
+            'previous_hash': self.previous_hash,
+            'proposer_public_key': binascii.hexlify(self.proposer_public_key).decode('ascii'),
+            'nonce': self.nonce,
+            'application_state_root': self.application_state_root,
+            'block_signature': binascii.hexlify(self.block_signature).decode('ascii') if self.block_signature else None,
+            'hash': self.hash
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Block':
+        """Creates a Block object from a dictionary."""
+        transactions = [Transaction.from_dict(tx_data) for tx_data in data['transactions']]
+        proposer_public_key = binascii.unhexlify(data['proposer_public_key'])
+        block = cls(data['index'], transactions, data['timestamp'], data['previous_hash'], proposer_public_key, data['application_state_root'], data['nonce'])
+        block.block_signature = binascii.unhexlify(data['block_signature']) if data.get('block_signature') else None
+        block.hash = data['hash'] # Assume hash is correct from saved state
+        return block
 
     def _calculate_transactions_merkle_root(self) -> str:
         """Calculates a simple Merkle root for the transactions in the block."""
