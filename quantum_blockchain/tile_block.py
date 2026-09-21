@@ -49,6 +49,8 @@ class SpectreTile:
         self.system_prompt_commitment = system_prompt_commitment
         self.timestamp = timestamp or time.time()
         self.previous_block_hash = previous_block_hash
+        self.neighborhood_index = index // 8
+        self.neighborhood_slot = index % 8
 
         # Map of edge_idx (0..13) -> {"neighbor_tile_id": str, "neighbor_edge_idx": int}
         self.edge_connections: Dict[int, Dict[str, Any]] = {}
@@ -61,6 +63,9 @@ class SpectreTile:
         return {
             "index": self.index,
             "agent_alias": self.agent_alias,
+            "neighborhood_index": self.neighborhood_index,
+            "neighborhood_slot": self.neighborhood_slot,
+            "neighborhood_name": f"Neighborhood-{self.neighborhood_index}",
             "transform": self.transform.to_dict(),
             "ml_kem_pk": binascii.hexlify(self.ml_kem_public_key).decode("ascii"),
             "ml_dsa_pk": binascii.hexlify(self.ml_dsa_public_key).decode("ascii"),

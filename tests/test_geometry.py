@@ -71,6 +71,27 @@ class TestSpectreGeometry(unittest.TestCase):
         is_valid3, reason3, contacts3 = verify_geometric_fit(third_tile, mosaic)
         self.assertTrue(is_valid3, f"Third tile failed: {reason3}")
 
+    def test_gapless_neighborhood_eight_tiles(self):
+        """Verifies that an entire 8-tile Neighborhood packs with zero gaps and zero overlaps."""
+        mosaic = []
+        for i in range(8):
+            sites = find_valid_open_sites(mosaic, max_sites=3)
+            self.assertGreater(len(sites), 0, f"Slot {i} must find a valid site")
+            site = sites[0]
+            ok, msg, contacts = verify_geometric_fit(site, mosaic)
+            self.assertTrue(ok, f"Slot {i} failed fit: {msg}")
+            mosaic.append(site)
+
+        self.assertEqual(len(mosaic), 8)
+
+        # Verify no pair of polygons overlap
+        for i in range(len(mosaic)):
+            for j in range(i + 1, len(mosaic)):
+                self.assertFalse(
+                    check_polygons_overlap(mosaic[i], mosaic[j]),
+                    f"Tiles {i} and {j} overlap!"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

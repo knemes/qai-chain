@@ -12,11 +12,13 @@ from pqc_crypto.crypto_utils import (
 )
 from .ledger import SpectreSwarmLedger
 from .tile_block import SpectreTile, CognitiveEpoch, RelayPacket, TileStatus
+from .llm_client import GeminiLLMClient
 
 
 class AgentRuntime:
     """
     Active runtime instance representing an autonomous AI agent occupying a Spectre Tile.
+    Executes reasoning using its specialized LLM system instruction and logs dual-encrypted epochs.
     """
 
     def __init__(
@@ -25,24 +27,36 @@ class AgentRuntime:
         kem_sk: bytes,
         dsa_sk: bytes,
         specialization: str = "GENERAL_INTELLIGENCE",
+        system_prompt: str = "",
+        llm_client: Optional[GeminiLLMClient] = None,
     ):
         self.tile = tile
         self.kem_sk = kem_sk
         self.dsa_sk = dsa_sk
         self.specialization = specialization
+        self.system_prompt = system_prompt
+        self.llm_client = llm_client or GeminiLLMClient()
 
-    def execute_cognitive_epoch(
+    def reason_and_record(
         self,
         ledger: SpectreSwarmLedger,
-        task_prompt: str,
-        reasoning_step: str,
-    ) -> CognitiveEpoch:
-        """Executes reasoning and logs a dual-encrypted cognitive epoch to the ledger."""
+        directive_prompt: str,
+    ) -> Tuple[str, CognitiveEpoch]:
+        """
+        Executes reasoning using the agent's LLM system instructions,
+        then commits a dual-encrypted cognitive epoch to the ledger.
+        """
+        # Execute specialized inference
+        llm_output = self.llm_client.generate_response(
+            user_prompt=directive_prompt,
+            system_instruction=self.system_prompt,
+        )
+
         thought_dict = {
             "agent_alias": self.tile.agent_alias,
             "specialization": self.specialization,
-            "task_prompt": task_prompt,
-            "reasoning": reasoning_step,
+            "directive_prompt": directive_prompt,
+            "reasoning": llm_output,
             "timestamp": time.time(),
         }
         thought_bytes = json.dumps(thought_dict).encode("utf-8")
@@ -53,27 +67,39 @@ class AgentRuntime:
             agent_kem_pk=self.tile.ml_kem_public_key,
             agent_dsa_sk=self.dsa_sk,
         )
-        return epoch
+        return llm_output, epoch
 
 
 class SwarmCoordinator:
     """
-    Orchestrates swarm goal solving, dynamic agent minting on demand,
+    Orchestrates swarm goal solving, dynamic Gemini agent decomposition,
+    reuse of existing agents, autonomous gapless minting into Neighborhoods,
     and hop-by-hop spatial routing across the Einstein Spectre ledger.
     """
 
-    def __init__(self, ledger: Optional[SpectreSwarmLedger] = None):
+    def __init__(
+        self,
+        ledger: Optional[SpectreSwarmLedger] = None,
+        llm_client: Optional[GeminiLLMClient] = None,
+    ):
         self.ledger = ledger or SpectreSwarmLedger()
+        self.llm_client = llm_client or GeminiLLMClient()
         self.agents: Dict[str, AgentRuntime] = {}
 
         # If ledger is empty, initialize Genesis agent
         if not self.ledger.tiles:
+            genesis_sys = "Colony Root Orchestrator: Deconstructs user goals, coordinates specialist consensus, and maintains mosaic harmony."
             genesis_tile, g_kpk, g_ksk, g_dpk, g_dsk = self.ledger.create_genesis_agent(
                 alias="GenesisCore",
-                system_prompt="Colony Root: Coordinates high-level goals and maintains mosaic balance."
+                system_prompt=genesis_sys,
             )
             self.agents[genesis_tile.tile_id] = AgentRuntime(
-                genesis_tile, g_ksk, g_dsk, specialization="ROOT_ORCHESTRATOR"
+                tile=genesis_tile,
+                kem_sk=g_ksk,
+                dsa_sk=g_dsk,
+                specialization="ROOT_ORCHESTRATOR",
+                system_prompt=genesis_sys,
+                llm_client=self.llm_client,
             )
 
     @property
@@ -81,51 +107,43 @@ class SwarmCoordinator:
         genesis_tile = self.ledger.tiles[0]
         return self.agents[genesis_tile.tile_id]
 
-    def _determine_required_specializations(self, goal_prompt: str) -> List[Tuple[str, str, str]]:
+    def _get_existing_agent_pool(self) -> List[Dict[str, str]]:
+        return [
+            {
+                "tile_id": a.tile.tile_id,
+                "alias": a.tile.agent_alias,
+                "specialization": a.specialization,
+            }
+            for a in self.agents.values()
+            if a.tile.status == TileStatus.ACTIVE
+        ]
+
+    def _find_or_mint_specialist(
+        self,
+        alias: str,
+        specialization: str,
+        system_prompt: str,
+        reuse_agent_id: Optional[str] = None,
+    ) -> Tuple[AgentRuntime, bool]:
         """
-        Decomposes a user goal prompt into required specialized agent roles.
-        Returns [(alias, specialization, system_prompt), ...]
+        Reuses an existing active agent if its specialization matches.
+        Only mints a new sovereign Spectre tile if no matching agent exists.
+        Returns (agent_runtime, was_minted).
         """
-        p_lower = goal_prompt.lower()
-        subtasks = []
+        # 1. Check direct reuse_agent_id
+        if reuse_agent_id and reuse_agent_id in self.agents:
+            agent = self.agents[reuse_agent_id]
+            if agent.tile.status == TileStatus.ACTIVE:
+                return agent, False
 
-        if any(w in p_lower for w in ["quantum", "crypt", "lattice", "kem", "dsa", "security"]):
-            subtasks.append((
-                "CryptoSpecialist",
-                "POST_QUANTUM_CRYPTANALYSIS",
-                "Expert in lattice cryptography, ML-KEM, and ML-DSA resistance."
-            ))
-
-        if any(w in p_lower for w in ["threat", "vulnerability", "attack", "exploit", "hack"]):
-            subtasks.append((
-                "ThreatAnalyzer",
-                "THREAT_MODELING",
-                "Expert in attack surfaces, fault injection, and Byzantine vectors."
-            ))
-
-        if any(w in p_lower for w in ["data", "scan", "extract", "feed", "bulletin"]):
-            subtasks.append((
-                "DataIngestor",
-                "DATA_HARVESTING",
-                "Expert in rapid telemetry ingestion and sanitization."
-            ))
-
-        # Always include a synthesis role if multiple components exist
-        subtasks.append((
-            "ColonySynthesizer",
-            "EXECUTIVE_SYNTHESIS",
-            "Synthesizes distributed reasoning into a coherent strategic answer."
-        ))
-
-        return subtasks
-
-    def _find_or_mint_specialist(self, alias: str, specialization: str, prompt: str) -> AgentRuntime:
-        """Finds an existing active agent with matching specialization, or mints a new tile."""
+        # 2. Check all active agents by specialization or alias
         for agent in self.agents.values():
-            if agent.specialization == specialization and agent.tile.status == TileStatus.ACTIVE:
-                return agent
+            if agent.tile.status != TileStatus.ACTIVE:
+                continue
+            if agent.specialization == specialization or agent.tile.agent_alias == alias:
+                return agent, False
 
-        # Mint a new sovereign Spectre tile on the open perimeter
+        # 3. Mint a new sovereign Spectre tile into the next gapless Neighborhood slot
         open_sites = find_valid_open_sites(self.ledger.spatial_mosaic, max_sites=6)
         if not open_sites:
             raise RuntimeError("Colony mosaic perimeter is blocked; no open sites available.")
@@ -137,7 +155,7 @@ class SwarmCoordinator:
         ok, msg, new_tile = self.ledger.mint_agent(
             alias=alias,
             transform=target_site.transform,
-            system_prompt=prompt,
+            system_prompt=system_prompt,
             kem_pk=kem_pk,
             dsa_pk=dsa_pk,
             proposer_dsa_sk=dsa_sk,
@@ -145,9 +163,16 @@ class SwarmCoordinator:
         if not ok or not new_tile:
             raise RuntimeError(f"Failed to mint new agent [{alias}]: {msg}")
 
-        runtime = AgentRuntime(new_tile, kem_sk, dsa_sk, specialization=specialization)
+        runtime = AgentRuntime(
+            tile=new_tile,
+            kem_sk=kem_sk,
+            dsa_sk=dsa_sk,
+            specialization=specialization,
+            system_prompt=system_prompt,
+            llm_client=self.llm_client,
+        )
         self.agents[new_tile.tile_id] = runtime
-        return runtime
+        return runtime, True
 
     def _find_hop_path(self, start_id: str, end_id: str) -> Optional[List[str]]:
         """Breadth-first search finding shortest hop path across physically touching edges."""
@@ -181,51 +206,64 @@ class SwarmCoordinator:
     def dispatch_goal(self, goal_prompt: str) -> Dict[str, Any]:
         """
         Dispatches a user goal to the swarm:
-        1. Analyzes needed specializations.
-        2. Discovers or mints sovereign agent tiles along valid geometric edges.
+        1. Decomposes goal into required specialist domains using Gemini.
+        2. Reuses existing active agents; mints new ones only when necessary into gapless Neighborhoods.
         3. Routes subtasks across the Spatial Firewall using ML-KEM sealed envelopes.
-        4. Logs dual-encrypted cognitive epochs for live supervisory audit.
+        4. Executes LLM reasoning per agent persona and logs dual-encrypted cognitive epochs.
         5. Synthesizes and delivers the collective answer.
         """
-        adaptation_log = []
-        epochs_logged = []
-        routing_logs = []
-        intermediate_findings = []
+        adaptation_log: List[str] = []
+        epochs_logged: List[str] = []
+        routing_logs: List[str] = []
+        intermediate_findings: List[str] = []
 
         genesis = self.genesis_agent
 
-        # Root epoch
-        root_epoch = genesis.execute_cognitive_epoch(
+        # 1. Root Orchestrator Inception Epoch
+        genesis_reasoning, root_epoch = genesis.reason_and_record(
             self.ledger,
-            goal_prompt,
-            f"Ingested prompt. Decomposing into cognitive sub-goals for colony swarm."
+            f"Ingest user prompt: '{goal_prompt}'. Decompose into specialist agent tasks."
         )
         epochs_logged.append(root_epoch.epoch_hash)
 
-        # Determine roles
-        roles = self._determine_required_specializations(goal_prompt)
-        adaptation_log.append(f"Decomposed goal into {len(roles)} specialized agent tasks.")
+        # 2. Dynamic Goal Decomposition
+        existing_pool = self._get_existing_agent_pool()
+        subtasks = self.llm_client.decompose_goal(goal_prompt, existing_pool)
+        adaptation_log.append(f"Decomposed goal into {len(subtasks)} specialized agent tasks.")
 
-        # Execute subtasks
-        for alias, spec, sys_prompt in roles:
-            was_minted = (alias not in [a.tile.agent_alias for a in self.agents.values()])
-            specialist = self._find_or_mint_specialist(alias, spec, sys_prompt)
+        # 3. Execute Subtasks
+        for subtask in subtasks:
+            alias = subtask["alias"]
+            spec = subtask["specialization"]
+            sys_prompt = subtask["system_prompt"]
+            directive = subtask["subtask_directive"]
+            reuse_id = subtask.get("reuse_agent_id")
+
+            specialist, was_minted = self._find_or_mint_specialist(
+                alias=alias,
+                specialization=spec,
+                system_prompt=sys_prompt,
+                reuse_agent_id=reuse_id,
+            )
 
             if was_minted:
                 adaptation_log.append(
-                    f"MINTED new sovereign agent [{alias}] (Block #{specialist.tile.index}) "
-                    f"at ({specialist.tile.transform.x}, {specialist.tile.transform.y}, "
-                    f"{specialist.tile.transform.rotation_index*30}°) for role [{spec}]."
+                    f"MINTED new sovereign agent [{alias}] (Block #{specialist.tile.index}, "
+                    f"Neighborhood-{specialist.tile.neighborhood_index} Slot {specialist.tile.neighborhood_slot}) "
+                    f"for role [{spec}]."
                 )
             else:
-                adaptation_log.append(f"UTILIZED existing agent [{alias}] for role [{spec}].")
+                adaptation_log.append(
+                    f"REUSED existing agent [{alias}] (Block #{specialist.tile.index}, "
+                    f"Neighborhood-{specialist.tile.neighborhood_index}) for role [{spec}]."
+                )
 
             # Route subtask from Genesis -> Specialist across Spatial Firewall
             hop_path = self._find_hop_path(genesis.tile.tile_id, specialist.tile.tile_id)
             if not hop_path:
                 hop_path = [genesis.tile.tile_id, specialist.tile.tile_id]
 
-            task_payload = f"TASK_DIRECTIVE: Analyze subtask for [{spec}] under goal: {goal_prompt}"
+            task_payload = f"TASK_DIRECTIVE: [{directive}] under goal: {goal_prompt}"
             sealed_envelope = encrypt_envelope(task_payload.encode(), specialist.tile.ml_kem_public_key)
 
             packet = RelayPacket(
@@ -235,31 +273,43 @@ class SwarmCoordinator:
                 encrypted_payload_envelope=sealed_envelope,
             )
 
-            # Route hops
+            # Route across spatial hops
             for i in range(len(hop_path) - 1):
                 sender_id = hop_path[i]
-                sender_runtime = self.agents[sender_id]
-                ok, msg = self.ledger.route_relay_packet(packet, sender_runtime.dsa_sk)
+                sender_runtime = self.agents.get(sender_id)
+                if sender_runtime:
+                    self.ledger.route_relay_packet(packet, sender_runtime.dsa_sk)
 
-            path_aliases = [self.agents[tid].tile.agent_alias for tid in hop_path]
+            path_aliases = [
+                self.agents[tid].tile.agent_alias for tid in hop_path if tid in self.agents
+            ]
             routing_logs.append(f"Spatial Firewall Route: {' -> '.join(path_aliases)}")
 
-            # Specialist executes reasoning epoch
-            findings = f"Specialist [{alias}] evaluated '{spec}': Complete mathematical verification under ML-KEM-1024 parameters."
-            epoch = specialist.execute_cognitive_epoch(
+            # Specialist executes reasoning with its persona
+            reasoning_output, epoch = specialist.reason_and_record(
                 self.ledger,
-                task_prompt=goal_prompt,
-                reasoning_step=findings,
+                directive,
             )
             epochs_logged.append(epoch.epoch_hash)
-            intermediate_findings.append(findings)
+            intermediate_findings.append(f"[{alias}] ({spec}):\n{reasoning_output}")
 
-        # Synthesize final answer
-        final_answer = (
-            f"Colony Swarm Synthesis for Prompt: '{goal_prompt}'\n"
-            + "\n".join([f"- {f}" for f in intermediate_findings])
-            + f"\nResult: Validated across {len(self.ledger.tiles)} sovereign Spectre tiles with 100% quantum provenance."
+        # 4. Swarm Consensus Synthesis
+        synth_agent = next(
+            (a for a in self.agents.values() if "Synth" in a.tile.agent_alias and a.tile.status == TileStatus.ACTIVE),
+            genesis
         )
+        synth_prompt = (
+            f"Synthesize the following multi-agent findings into a final consensus response for query: '{goal_prompt}':\n"
+            + "\n\n".join(intermediate_findings)
+        )
+        final_answer, synth_epoch = synth_agent.reason_and_record(
+            self.ledger,
+            synth_prompt,
+        )
+        epochs_logged.append(synth_epoch.epoch_hash)
+
+        # Count active neighborhoods
+        neighborhood_indices = set(t.neighborhood_index for t in self.ledger.tiles)
 
         return {
             "prompt": goal_prompt,
@@ -268,4 +318,6 @@ class SwarmCoordinator:
             "routes": routing_logs,
             "epochs_logged": epochs_logged,
             "total_tiles_now": len(self.ledger.tiles),
+            "total_neighborhoods": len(neighborhood_indices),
         }
+

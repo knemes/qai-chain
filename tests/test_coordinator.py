@@ -22,7 +22,8 @@ class TestSwarmCoordinator(unittest.TestCase):
         initial_tiles = result["total_tiles_now"]
         result2 = coordinator.dispatch_goal("Check threat mitigation for Kyber.")
         # Should reuse existing specialists without runaway tile creation
-        self.assertIn("UTILIZED", "\n".join(result2["adaptation_log"]))
+        self.assertTrue(any("REUSED" in line or "UTILIZED" in line for line in result2["adaptation_log"]))
+        self.assertGreaterEqual(result2["total_neighborhoods"], 1)
 
 
 if __name__ == "__main__":

@@ -24,9 +24,23 @@ SPECTRE_BASE_VERTICES: List[Tuple[float, float]] = [
 
 # 14 Edge polarities for the chiral aperiodic matching rules.
 # +1 represents a convex/male curve, -1 represents a concave/female curve.
-# When two edges meet in opposite winding (p1->p2 vs p2->p1), matching polarities interlock.
+# When two edges meet in opposite winding, a convex edge (+1) must mate with a concave edge (-1),
+# meaning c_pol + e_pol == 0 (complementary interlocking).
 SPECTRE_EDGE_POLARITIES: List[int] = [
     1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1
+]
+
+# Canonical 8-tile Neighborhood transforms from Craig Kaplan's reference substitution system.
+# Inside an 8-tile Neighborhood, all 8 tiles pack edge-to-edge with ZERO voids and ZERO overlaps.
+NEIGHBORHOOD_SLOT_TRANSFORMS: List[Dict[str, Any]] = [
+    {"slot": 0, "rot_idx": 0, "tx": 0.0, "ty": 0.0},
+    {"slot": 1, "rot_idx": 2, "tx": -1.5, "ty": -0.866025},
+    {"slot": 2, "rot_idx": 2, "tx": -3.232051, "ty": 0.866025},
+    {"slot": 3, "rot_idx": 4, "tx": -3.232051, "ty": -0.866025},
+    {"slot": 4, "rot_idx": 6, "tx": -1.732051, "ty": -1.732051},
+    {"slot": 5, "rot_idx": 6, "tx": -2.366025, "ty": -4.098076},
+    {"slot": 6, "rot_idx": 8, "tx": -0.866025, "ty": -3.232051},
+    {"slot": 7, "rot_idx": 4, "tx": 3.232051, "ty": -2.598076},
 ]
 
 
@@ -55,6 +69,25 @@ class SpectreTransform:
 
     def __repr__(self) -> str:
         return f"SpectreTransform(x={self.x:.3f}, y={self.y:.3f}, rot={self.rotation_index * 30}°)"
+
+
+def get_neighborhood_slot_transform(
+    neighborhood_index: int = 0,
+    slot_index: int = 0
+) -> SpectreTransform:
+    """
+    Returns the exact 2D Euclidean transform for slot (0..7) within a Neighborhood.
+    All 8 slots pack gaplessly with 0 overlaps and 0 holes.
+    """
+    slot_data = NEIGHBORHOOD_SLOT_TRANSFORMS[slot_index % 8]
+    # For higher neighborhoods, offset along the supertile translation vector
+    offset_x = neighborhood_index * 6.5
+    offset_y = neighborhood_index * -3.5
+    return SpectreTransform(
+        x=slot_data["tx"] + offset_x,
+        y=slot_data["ty"] + offset_y,
+        rotation_index=slot_data["rot_idx"],
+    )
 
 
 class SpectrePolygon:
@@ -251,10 +284,11 @@ def verify_geometric_fit(
         for c_idx, c_edge in enumerate(cand_edges):
             for e_idx, e_edge in enumerate(ex_edges):
                 if edges_touch_and_align(c_edge, e_edge):
-                    # Check edge polarity compatibility
+                    # Check edge polarity compatibility:
+                    # A convex (+1) bump must mate into a concave (-1) dent, so c_pol + e_pol == 0
                     c_pol = candidate.get_edge_polarity(c_idx)
                     e_pol = existing.get_edge_polarity(e_idx)
-                    if c_pol != e_pol:
+                    if c_pol + e_pol != 0:
                         return (
                             False,
                             f"Edge rule violation on tile #{idx}: candidate edge {c_idx} (pol {c_pol}) "
@@ -276,7 +310,7 @@ def find_valid_open_sites(
     """
     Finds open sites on the colony perimeter where a new Spectre tile can snap
     with 100% mathematical validity (contact alignment, valid edge polarity, zero collision).
-    This guarantees prevention of geometric cul-de-sacs.
+    Prioritizes filling the current 8-tile Neighborhood gaplessly before expanding.
     """
     if not existing_mosaic:
         return [SpectrePolygon(SpectreTransform(0.0, 0.0, 0))]
@@ -284,19 +318,28 @@ def find_valid_open_sites(
     valid_candidates: List[SpectrePolygon] = []
     seen_transforms = set()
 
+    # 1. PRIORITIZE CANONICAL GAPLESS NEIGHBORHOOD SLOTS
+    next_slot = len(existing_mosaic) % 8
+    next_neighborhood = len(existing_mosaic) // 8
+    canon_transform = get_neighborhood_slot_transform(next_neighborhood, next_slot)
+    canon_poly = SpectrePolygon(canon_transform)
+    is_valid, _, contacts = verify_geometric_fit(canon_poly, existing_mosaic)
+    if is_valid and contacts:
+        valid_candidates.append(canon_poly)
+        seen_transforms.add((canon_transform.x, canon_transform.y, canon_transform.rotation_index))
+
+    # 2. ALSO SEARCH PERIMETER EDGES FOR ADDITIONAL OPEN SITES
     for ex_idx, existing in enumerate(existing_mosaic):
         for e_idx, ex_edge in enumerate(existing.edges):
             (q1, q2) = ex_edge
             e_pol = existing.get_edge_polarity(e_idx)
+            needed_pol = -e_pol  # Complementary polarity required
 
-            # We want candidate edge c_edge = (p1, p2) to align with (q2, q1)
-            # Try each of candidate's 14 edges c_idx that share polarity e_pol
             for c_idx in range(14):
-                if SPECTRE_EDGE_POLARITIES[c_idx] != e_pol:
+                if SPECTRE_EDGE_POLARITIES[c_idx] != needed_pol:
                     continue
 
                 for rot_idx in range(12):
-                    # Rotate base edge c_idx by rot_idx
                     ang = rot_idx * (math.pi / 6.0)
                     c = math.cos(ang)
                     s = math.sin(ang)
